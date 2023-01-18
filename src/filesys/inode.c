@@ -23,6 +23,7 @@ struct inode_disk
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
+
 static inline size_t
 bytes_to_sectors (off_t size)
 {
@@ -90,14 +91,14 @@ inode_create (block_sector_t sector, off_t length)
       disk_inode->magic = INODE_MAGIC;
       if (free_map_allocate (sectors, &disk_inode->start)) 
         {
-          block_write (fs_device, sector, disk_inode);
+          buffer_cache_write (sector, disk_inode);
           if (sectors > 0) 
             {
               static char zeros[BLOCK_SECTOR_SIZE];
               size_t i;
               
               for (i = 0; i < sectors; i++) 
-                block_write (fs_device, disk_inode->start + i, zeros);
+                buffer_cache_write (disk_inode->start + i, zeros);
             }
           success = true; 
         } 
@@ -138,7 +139,7 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-  block_read (fs_device, inode->sector, &inode->data);
+  buffer_cache_read(inode->sector, &inode->data);
   return inode;
 }
 

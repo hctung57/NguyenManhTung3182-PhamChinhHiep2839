@@ -42,21 +42,22 @@ void write_buffer_cache_to_disk(struct buffer_cache_entry *entry)
         block_write(fs_device, entry->disk_sector, entry->buffer);
         entry->dirty = false;
     }
-} 
+}
 
-void buffer_cache_close ()
+void buffer_cache_close()
 {
-  // flush buffer cache entries
-  lock_acquire (&buffer_cache_lock);
+    // flush buffer cache entries
+    lock_acquire(&buffer_cache_lock);
 
-  size_t i;
-  for (i = 0; i < BUFFER_CACHE_SIZE; ++ i)
-  {
-    if (cache[i].used == false) continue;
-    write_buffer_cache_to_disk( &(cache[i]) );
-  }
+    size_t i;
+    for (i = 0; i < BUFFER_CACHE_SIZE; ++i)
+    {
+        if (cache[i].used == false)
+            continue;
+        write_buffer_cache_to_disk(&(cache[i]));
+    }
 
-  lock_release (&buffer_cache_lock);
+    lock_release(&buffer_cache_lock);
 }
 
 static struct buffer_cache_entry *buffer_cache_lookup(block_sector_t sector)
@@ -126,27 +127,28 @@ void buffer_cache_read(block_sector_t sector, void *target)
     lock_release(&buffer_cache_lock);
 }
 
-void buffer_cache_write (block_sector_t sector, const void *source)
+void buffer_cache_write(block_sector_t sector, const void *source)
 {
-  lock_acquire (&buffer_cache_lock);
+    lock_acquire(&buffer_cache_lock);
 
-  struct buffer_cache_entry *sector_block = buffer_cache_lookup (sector);
-  if (sector_block == NULL) {
-    // cache miss: need eviction.
-    sector_block = buffer_cache_evict ();
-    ASSERT (sector_block != NULL && sector_block->used == false);
+    struct buffer_cache_entry *sector_block = buffer_cache_lookup(sector);
+    if (sector_block == NULL)
+    {
+        // cache miss: need eviction.
+        sector_block = buffer_cache_get_slot();
+        ASSERT(sector_block != NULL && sector_block->used == false);
 
-    // fill in the cache entry.
-    sector_block->used = true;
-    sector_block->disk_sector = sector;
-    sector_block->dirty = false;
-    block_read (fs_device, sector, sector_block->buffer);
-  }
+        // fill in the cache entry.
+        sector_block->used = true;
+        sector_block->disk_sector = sector;
+        sector_block->dirty = false;
+        block_read(fs_device, sector, sector_block->buffer);
+    }
 
-  // copy the data form memory into the buffer cache.
-  sector_block->access = true;
-  sector_block->dirty = true;
-  memcpy (sector_block->buffer, source, BLOCK_SECTOR_SIZE);
+    // copy the data form memory into the buffer cache.
+    sector_block->access = true;
+    sector_block->dirty = true;
+    memcpy(sector_block->buffer, source, BLOCK_SECTOR_SIZE);
 
-  lock_release (&buffer_cache_lock);
+    lock_release(&buffer_cache_lock);
 }
