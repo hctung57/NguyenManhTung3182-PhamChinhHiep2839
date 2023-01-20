@@ -17,7 +17,10 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
+#ifdef VM
+#include "vm/frame.h"
+#include "vm/page.h"
+#endif
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -53,7 +56,15 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  struct thread *curr = thread_current ();
+#ifdef VM
+  /* Initialize supplemental page table. */
+  if (!vm_page_init (&curr->page_table))
+    sys_exit (-1);
+  /* Initialize the list of memory mapped files. */
+  curr->max_mapid = 0;
+  list_init (&curr->mmap_list);
+#endif
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -97,7 +108,13 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
+#ifdef VM
+  vm_frame_acquire ();
+  filesys_acquire ();
+  vm_page_destroy (&cur->page_table);
+  filesys_release ();
+  vm_frame_release ();
+#endif
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -387,6 +404,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+#ifdef VM
+  off_t current_ofs = ofs;
+#endif
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -395,7 +415,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
+#ifdef VM
+      struct page *page;
 
+      vm_frame_acquire ();
+      vm_page_insert (upage);
+      page = vm_page_find (&thread_current ()->page_table, upage);
+      page->loaded = false;
+      page->file = file;
+      page->file_ofs = current_ofs;
+      page->file_read_bytes = page_read_bytes;
+      page->file_writable = writable;
+      vm_frame_release ();
+#else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
@@ -415,7 +447,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false; 
         }
-
+#endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -432,14 +464,29 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
+#ifdef VM
+  vm_frame_acquire ();
+  kpage = frame_alloc (((uint8_t *) PHYS_BASE) - PGSIZE, PAL_ZERO);
+#else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+#endif
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (success){
         *esp = PHYS_BASE;
-      else
+#ifdef VM
+        vm_page_insert (((uint8_t *) PHYS_BASE) - PGSIZE);
+        vm_frame_release ();
+#endif
+      }else{
+#ifdef VM
+        vm_frame_free (kpage);
+        vm_frame_release ();
+#else
         palloc_free_page (kpage);
+#endif
+        }
     }
   return success;
 }

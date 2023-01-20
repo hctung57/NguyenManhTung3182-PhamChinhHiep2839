@@ -4,7 +4,13 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-
+#include "threads/vaddr.h"
+#ifdef VM
+#include <stdint.h>
+#include "userprog/pagedir.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+#endif
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -126,7 +132,13 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
-
+#ifdef VM
+  struct thread *t;
+  struct page *page;
+  uint8_t *upage;
+  uint8_t *kpage;
+  bool success = false;
+#endif
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -147,7 +159,44 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+#ifdef VM
+  if (not_present)
+    {
+      t = thread_current ();
+      upage = pg_round_down (fault_addr);
 
+      /* Check supplemental page table. */
+      vm_frame_acquire ();
+      page = vm_page_find (&t->page_table, upage);
+      if (page != NULL)
+        {
+          /* Swap. */
+          if (!page->valid)
+            success = vm_page_load_swap (page);
+          else if (!page->loaded)
+            {
+              /* File. */
+              if (page->file != NULL)
+                success = vm_page_load_file (page);
+              /* Zero. */
+              else
+                success = vm_page_load_zero (page);
+
+              if (success)
+                page->loaded = true;
+            }
+
+          if (success)
+            {
+              vm_frame_release ();
+              return;
+            }
+        }
+      vm_frame_release ();
+    }
+#endif
+   if (not_present || write || user)
+      sys_exit (-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */

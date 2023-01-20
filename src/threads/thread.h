@@ -2,6 +2,7 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 
@@ -88,18 +89,31 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int exit_status;                    /* Exit status. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-#ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-#endif
 
+#ifdef VM
+   struct hash page_table;             /* Supplemental page table. */
+   int max_mapid;                      /*The largest mapping identifier*/
+   struct list mmap_list;              /*list of memory mapped files*/
+#endif
+    int max_fd;                         /* The largest file descriptor. */
+    struct list fd_list;                /* List of file descriptors. */
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  };
+/* File descriptor of thread. */
+struct thread_fd
+  {
+    int fd;                             /* File descriptor. */
+    struct file *file;                  /* The file. */
+    struct list_elem elem;              /* List element. */
   };
 
 /* If false (default), use round-robin scheduler.

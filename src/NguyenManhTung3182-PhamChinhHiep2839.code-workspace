@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"thread.h": "c",
+			"file.h": "c",
+			"typeinfo": "c",
+			"page.h": "c",
+			"directory.h": "c",
+			"inode.h": "c",
+			"vaddr.h": "c",
+			"string": "c",
+			"vector": "c",
+			"memory": "c",
+			"string_view": "c",
+			"system_error": "c",
+			"stdint.h": "c"
+		}
+	}
+}
